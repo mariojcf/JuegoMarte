@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Misión Marte - Proyecto Final Matemática IV (UMES)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font Inter & Orbitron -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050508;
+            color: #e2e8f0;
+            overflow: hidden;
+            user-select: none;
+        }
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        /* Custom Glassmorphism HUD */
+        .hud-card {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+        .hud-card-cyan {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+        /* Formula styling helper */
+        .math-expr {
+            font-family: 'Cambria', 'Times New Roman', serif;
+            font-style: italic;
+        }
+        .math-expr sub, .math-expr sup {
+            font-style: normal;
+        }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ef4444;
+            border-radius: 3px;
+        }
+        /* Pulsing lights */
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.8; filter: drop-shadow(0 0 8px rgba(239,68,68,0.8)); }
+            50% { opacity: 0.4; filter: drop-shadow(0 0 2px rgba(239,68,68,0.3)); }
+        }
+        .pulse-red {
+            animation: pulseGlow 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative">
+
+    <!-- 3D WebGL Canvas Container -->
+    <div id="webgl-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+    <!-- TOP HEADER / PROJECT INFOBAR -->
+    <header class="absolute top-4 left-4 right-4 z-10 flex flex-wrap justify-between items-center gap-4 pointer-events-none">
+        <div class="hud-card p-3 px-5 rounded-2xl flex items-center gap-4 pointer-events-auto border-l-4 border-l-red-500">
+            <div class="bg-red-500/20 p-2.5 rounded-xl border border-red-500/40 text-red-400">
+                <i class="fa-solid font-bold fa-rocket text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-orbitron font-bold text-lg text-red-400 tracking-wider">MARS ROVER EXPLORER</h1>
+                <p class="text-xs text-slate-400">UMES • Facultad de Ingeniería • Matemática IV</p>
+            </div>
+        </div>
+
+        <!-- AUTHORS MODAL TRIGGER BUTTON -->
+        <div class="flex items-center gap-3 pointer-events-auto">
+            <button id="btn-authors" onclick="toggleModal('authors-modal')" class="hud-card hover:bg-slate-800/80 text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 border-slate-700 transition font-semibold">
+                <i class="fa-solid fa-users text-cyan-400"></i> Autores
+            </button>
+            <button id="btn-controls" onclick="toggleModal('controls-modal')" class="hud-card hover:bg-slate-800/80 text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 border-slate-700 transition font-semibold">
+                <i class="fa-solid fa-gamepad text-amber-400"></i> Controles
+            </button>
+        </div>
+    </header>
+
+    <!-- LIVE TELEMETRY HUD (BOTTOM LEFT) -->
+    <div class="absolute bottom-6 left-6 z-10 w-80 hud-card p-4 rounded-2xl border-red-500/30 text-xs space-y-3 font-mono">
+        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+            <span class="font-orbitron font-bold text-red-400 flex items-center gap-2">
+                <i class="fa-solid fa-satellite pulse-red"></i> TELEMETRÍA EN VIVO
+            </span>
+            <span id="rover-mode" class="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full border border-red-500/30">MANUAL</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-slate-300">
+            <div>
+                <span class="text-slate-500 block text-[10px]">POSICIÓN (x, y)</span>
+                <span id="telemetry-pos" class="text-cyan-300 font-semibold">x: 0.00, y: 0.00</span>
+            </div>
+            <div>
+                <span class="text-slate-500 block text-[10px]">ALTURA z = f(x,y)</span>
+                <span id="telemetry-z" class="text-amber-300 font-semibold">20.00 m</span>
+            </div>
+            <div>
+                <span class="text-slate-500 block text-[10px]">GRADIENTE ∇f</span>
+                <span id="telemetry-grad" class="text-emerald-300 font-semibold">(0.50, 0.30)</span>
+            </div>
+            <div>
+                <span class="text-slate-500 block text-[10px]">PENDIENTE / INCL.</span>
+                <span id="telemetry-slope" class="text-purple-300 font-semibold">16.2°</span>
+            </div>
+        </div>
+
+        <div class="pt-1">
+            <span class="text-slate-500 block text-[10px] mb-1">MÁXIMO ASCENSO Vector Dir.</span>
+            <div class="w-full bg-slate-900/80 rounded-lg p-2 border border-slate-800 text-[11px] text-emerald-400 flex justify-between">
+                <span id="telemetry-ascent">u_max = (0.85, 0.52)</span>
+                <i class="fa-solid fa-arrow-up-right-dots"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- PHASE NAVIGATION / AUTOPILOT (BOTTOM RIGHT) -->
+    <div class="absolute bottom-6 right-6 z-10 w-96 hud-card-cyan p-4 rounded-2xl border-cyan-500/30 text-xs">
+        <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
+            <span class="font-orbitron font-bold text-cyan-400 flex items-center gap-2">
+                <i class="fa-solid fa-map-location-dot"></i> GUÍA DE FASES DEL PROYECTO
+            </span>
+            <span class="text-[10px] text-slate-400">Seleccionar Fase</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 mb-3">
+            <button onclick="selectPhase(1)" class="phase-btn bg-slate-800/90 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 p-2 rounded-xl border border-slate-700 text-center transition font-semibold">
+                Fase 1<br><span class="text-[10px] font-normal text-slate-400">Terreno</span>
+            </button>
+            <button onclick="selectPhase(2)" class="phase-btn bg-slate-800/90 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 p-2 rounded-xl border border-slate-700 text-center transition font-semibold">
+                Fase 2<br><span class="text-[10px] font-normal text-slate-400">Derivadas</span>
+            </button>
+            <button onclick="selectPhase(3)" class="phase-btn bg-slate-800/90 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 p-2 rounded-xl border border-slate-700 text-center transition font-semibold">
+                Fase 3<br><span class="text-[10px] font-normal text-slate-400">Base Opt.</span>
+            </button>
+            <button onclick="selectPhase(4)" class="phase-btn bg-slate-800/90 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 p-2 rounded-xl border border-slate-700 text-center transition font-semibold">
+                Fase 4<br><span class="text-[10px] font-normal text-slate-400">Ruta 3D</span>
+            </button>
+            <button onclick="selectPhase(5)" class="phase-btn bg-slate-800/90 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 p-2 rounded-xl border border-slate-700 text-center transition font-semibold">
+                Fase 5<br><span class="text-[10px] font-normal text-slate-400">Integrales</span>
+            </button>
+            <button onclick="selectPhase(6)" class="phase-btn bg-slate-800/90 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 p-2 rounded-xl border border-slate-700 text-center transition font-semibold">
+                Fase 6<br><span class="text-[10px] font-normal text-slate-400">Cúpula</span>
+            </button>
+        </div>
+
+        <button id="btn-autopilot" onclick="toggleAutopilot()" class="w-full bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white py-2 px-3 rounded-xl font-orbitron font-bold text-xs tracking-wider transition flex justify-center items-center gap-2 shadow-lg shadow-red-900/30">
+            <i class="fa-solid fa-compass"></i> PILOTO AUTOMÁTICO A FASE ACTUAL
+        </button>
+    </div>
+
+    <!-- PHASE DETAILS SIDE PANEL -->
+    <div id="phase-panel" class="absolute top-20 right-6 z-10 w-96 max-h-[calc(100vh-220px)] hud-card p-5 rounded-2xl overflow-y-auto hidden border-cyan-500/40">
+        <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
+            <h2 id="phase-title" class="font-orbitron font-bold text-cyan-400 text-sm">FASE 1: MODELACIÓN DEL TERRENO</h2>
+            <button onclick="closePhasePanel()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div id="phase-content" class="text-xs text-slate-300 space-y-3 leading-relaxed"></div>
+    </div>
+
+    <!-- AUTHORS MODAL -->
+    <div id="authors-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="hud-card max-w-md w-full p-6 rounded-3xl border-red-500/40 space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                <h3 class="font-orbitron font-bold text-lg text-red-400 flex items-center gap-2">
+                    <i class="fa-solid fa-graduation-cap"></i> EQUIPO DEL PROYECTO
+                </h3>
+                <button onclick="toggleModal('authors-modal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="text-xs space-y-3 text-slate-300">
+                <p class="font-semibold text-slate-200">Universidad Mesoamericana (UMES)</p>
+                <p class="text-slate-400">Facultad de Ingeniería en Sistemas • Matemática IV</p>
+                <p class="text-amber-400 font-medium">Catedrático: Ing. Juan Carlos Ruiz Castillo</p>
+
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-1.5 mt-2">
+                    <p class="text-cyan-300 font-semibold border-b border-slate-800 pb-1">Integrantes:</p>
+                    <p>Heidi Gabriela Maldonado Santizo</p>
+                    <p>Mario Javier Corado Falla</p>
+                    <p>Paola Giselle Lucas Minera</p>
+                </div>
+            </div>
+            <button onclick="toggleModal('authors-modal')" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-xl text-xs font-semibold transition">
+                Cerrar
+            </button>
+        </div>
+    </div>
+
+    <!-- CONTROLS MODAL -->
+    <div id="controls-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="hud-card max-w-md w-full p-6 rounded-3xl border-amber-500/40 space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                <h3 class="font-orbitron font-bold text-lg text-amber-400 flex items-center gap-2">
+                    <i class="fa-solid fa-gamepad"></i> CONTROLES DEL ROVER
+                </h3>
+                <button onclick="toggleModal('controls-modal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="text-xs space-y-3 text-slate-300">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                        <span class="text-amber-300 font-bold block mb-1">Avanzar / Reversa</span>
+                        <span class="text-slate-400">Teclas <kbd class="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-slate-200">W</kbd> / <kbd class="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-slate-200">S</kbd></span>
+                    </div>
+                    <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                        <span class="text-amber-300 font-bold block mb-1">Girar Izq / Der</span>
+                        <span class="text-slate-400">Teclas <kbd class="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-slate-200">A</kbd> / <kbd class="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-slate-200">D</kbd></span>
+                    </div>
+                    <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                        <span class="text-cyan-300 font-bold block mb-1">Rotar Cámara</span>
+                        <span class="text-slate-400">Click Izq + Arrastrar</span>
+                    </div>
+                    <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                        <span class="text-cyan-300 font-bold block mb-1">Zoom Cámara</span>
+                        <span class="text-slate-400">Rueda del Mouse</span>
+                    </div>
+                </div>
+            </div>
+            <button onclick="toggleModal('controls-modal')" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-xl text-xs font-semibold transition">
+                Entendido
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN THREE.JS SCRIPT -->
+    <script>
+        // --- MATHEMATICAL MODEL FORMULAS ---
+        function terrainFunction(x, y) {
+            const exp1 = Math.exp(- (Math.pow(x - 3, 2) + Math.pow(y - 7, 2)) / 4);
+            const exp2 = Math.exp(- (Math.pow(x - 7, 2) + Math.pow(y - 3, 2)) / 4);
+            return 20 + 8 * exp1 - 6 * exp2 + 0.5 * x + 0.3 * y;
+        }
+
+        function partialDerivativeX(x, y) {
+            const exp1 = Math.exp(- (Math.pow(x - 3, 2) + Math.pow(y - 7, 2)) / 4);
+            const exp2 = Math.exp(- (Math.pow(x - 7, 2) + Math.pow(y - 3, 2)) / 4);
+            return 8 * exp1 * (-2 * (x - 3) / 4) - 6 * exp2 * (-2 * (x - 7) / 4) + 0.5;
+        }
+
+        function partialDerivativeY(x, y) {
+            const exp1 = Math.exp(- (Math.pow(x - 3, 2) + Math.pow(y - 7, 2)) / 4);
+            const exp2 = Math.exp(- (Math.pow(x - 7, 2) + Math.pow(y - 3, 2)) / 4);
+            return 8 * exp1 * (-2 * (y - 7) / 4) - 6 * exp2 * (-2 * (y - 3) / 4) + 0.3;
+        }
+
+        // --- GLOBAL VARIABLES ---
+        let scene, camera, renderer, controls;
+        let terrainMesh, roverGroup, wheels = [];
+        let domeStructureMesh, trajectoryCurveMesh;
+        let keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+
+        let roverState = {
+            x: 5,
+            y: 5,
+            angle: 0,
+            speed: 0,
+            maxSpeed: 0.12,
+            accel: 0.005,
+            friction: 0.94
+        };
+
+        let isAutopilot = false;
+        let activePhase = 1;
+
+        const phaseWaypoints = {
+            1: { x: 3, y: 7, label: "P1 (Pico Elevado)" },
+            2: { x: 7, y: 3, label: "P2 (Depresión)" },
+            3: { x: 6.73, y: 2.75, label: "P3 (Base Óptima / Máx Local)" },
+            4: { x: 2, y: -3, label: "Trayectoria Circular (Ruta 3D)" },
+            5: { x: 0, y: 0, label: "Región Circular Integración" },
+            6: { x: 2, y: -3, label: "Cúpula Semiesférica" }
+        };
+
+        // --- INITIALIZATION ---
+        window.addEventListener('load', () => {
+            initScene();
+            initTerrain();
+            initRover();
+            initColonyEnvironment();
+            initMartianTrees();
+            initMarkersAndDome();
+            initEventListeners();
+            selectPhase(1);
+            animate();
+        });
+
+        function initScene() {
+            const container = document.getElementById('webgl-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0508);
+            scene.fog = new THREE.FogExp2(0x1a0a0f, 0.012);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(15, 25, 30);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.02;
+
+            const ambientLight = new THREE.AmbientLight(0xffdcd0, 0.7);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffa278, 1.4);
+            sunLight.position.set(20, 50, 20);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 150;
+            const d = 40;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            const starsGeo = new THREE.BufferGeometry();
+            const starsCount = 1200;
+            const starPositions = new Float32Array(starsCount * 3);
+            for (let i = 0; i < starsCount * 3; i++) {
+                starPositions[i] = (Math.random() - 0.5) * 300;
+            }
+            starsGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+            const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6 });
+            scene.add(new THREE.Points(starsGeo, starsMat));
+        }
+
+        function initTerrain() {
+            const gridResolution = 120;
+            const size = 30;
+            const geometry = new THREE.PlaneGeometry(size, size, gridResolution, gridResolution);
+            geometry.rotateX(-Math.PI / 2);
+
+            const pos = geometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const y = -pos.getZ(i);
+                const z = terrainFunction(x, y);
+                pos.setY(i, z * 0.5);
+            }
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xc85a32,
+                roughness: 0.85,
+                metalness: 0.1,
+                flatShading: true
+            });
+
+            terrainMesh = new THREE.Mesh(geometry, material);
+            terrainMesh.receiveShadow = true;
+            scene.add(terrainMesh);
+
+            const wireframeGeo = new THREE.WireframeGeometry(geometry);
+            const wireframeMat = new THREE.LineBasicMaterial({ color: 0xef4444, opacity: 0.12, transparent: true });
+            const wireframe = new THREE.LineSegments(wireframeGeo, wireframeMat);
+            wireframe.position.y += 0.02;
+            scene.add(wireframe);
+        }
+
+        function placeOnTerrain(obj, x, y, yOffset = 0) {
+            const z = terrainFunction(x, y);
+            obj.position.set(x, z * 0.5 + yOffset, -y);
+        }
+
+        // --- EXPANDED HABITATS & BIO-DOMES ---
+        function initColonyEnvironment() {
+            const colonyGroup = new THREE.Group();
+
+            // 1. Amplia variedad de Módulos Habitacionales ("Casitas")
+            const habPositions = [
+                { x: 6.2, y: 2.2 }, { x: 7.3, y: 3.2 }, { x: 5.8, y: 3.5 },
+                { x: 2.8, y: -1.8 }, { x: 1.2, y: -4.2 }, { x: -3.5, y: 4.5 },
+                { x: -5.0, y: 2.0 }, { x: -2.0, y: -6.0 }, { x: 8.5, y: -2.5 },
+                { x: 4.0, y: 8.0 }, { x: -6.5, y: -3.0 }, { x: 0.5, y: 6.5 }
+            ];
+
+            const habMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.7 });
+            const glassMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.7 });
+
+            habPositions.forEach((pos) => {
+                const hab = new THREE.Group();
+                const bodyGeo = new THREE.CylinderGeometry(0.8, 0.8, 1.2, 12);
+                bodyGeo.rotateZ(Math.PI / 2);
+                const body = new THREE.Mesh(bodyGeo, habMat);
+                body.castShadow = true;
+                hab.add(body);
+
+                const capGeo = new THREE.SphereGeometry(0.8, 12, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+                const cap1 = new THREE.Mesh(capGeo, habMat);
+                cap1.rotation.z = -Math.PI / 2;
+                cap1.position.x = 0.6;
+                hab.add(cap1);
+
+                const cap2 = new THREE.Mesh(capGeo, habMat);
+                cap2.rotation.z = Math.PI / 2;
+                cap2.position.x = -0.6;
+                hab.add(cap2);
+
+                const winGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.1, 8);
+                winGeo.rotateX(Math.PI / 2);
+                const win = new THREE.Mesh(winGeo, glassMat);
+                win.position.set(0, 0.4, 0.75);
+                hab.add(win);
+
+                placeOnTerrain(hab, pos.x, pos.y, 0.4);
+                colonyGroup.add(hab);
+            });
+
+            // 2. Más Bio-Domos Agrícolas
+            const bioDomePositions = [
+                { x: 4.5, y: -2.0, r: 1.2 },
+                { x: -0.5, y: -1.0, r: 1.0 },
+                { x: 5.5, y: 1.0, r: 1.1 },
+                { x: -4.0, y: -4.0, r: 1.3 },
+                { x: -3.0, y: 6.0, r: 1.0 },
+                { x: 7.5, y: -5.5, r: 1.2 },
+                { x: 2.0, y: 6.0, r: 1.1 }
+            ];
+
+            const plantColors = [0x10b981, 0x34d399, 0xa3e635, 0x06b6d4, 0xf43f5e];
+
+            bioDomePositions.forEach((b) => {
+                const domeGrp = new THREE.Group();
+
+                const gGeo = new THREE.SphereGeometry(b.r, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+                const gMat = new THREE.MeshPhysicalMaterial({
+                    color: 0xa7f3d0,
+                    transparent: true,
+                    opacity: 0.5,
+                    roughness: 0.1,
+                    transmission: 0.8
+                });
+                const domeMesh = new THREE.Mesh(gGeo, gMat);
+                domeGrp.add(domeMesh);
+
+                const ringGeo = new THREE.CylinderGeometry(b.r, b.r + 0.1, 0.2, 16);
+                const ringMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.y = 0.1;
+                domeGrp.add(ring);
+
+                const plantCount = 7;
+                for (let i = 0; i < plantCount; i++) {
+                    const px = (Math.random() - 0.5) * (b.r * 1.2);
+                    const pz = (Math.random() - 0.5) * (b.r * 1.2);
+                    const pHeight = 0.3 + Math.random() * 0.4;
+
+                    const plantGeo = new THREE.ConeGeometry(0.12, pHeight, 6);
+                    const pColor = plantColors[Math.floor(Math.random() * plantColors.length)];
+                    const plantMat = new THREE.MeshStandardMaterial({
+                        color: pColor,
+                        emissive: pColor,
+                        emissiveIntensity: 0.6
+                    });
+                    const plant = new THREE.Mesh(plantGeo, plantMat);
+                    plant.position.set(px, pHeight / 2 + 0.1, pz);
+                    domeGrp.add(plant);
+                }
+
+                placeOnTerrain(domeGrp, b.x, b.y, 0);
+                colonyGroup.add(domeGrp);
+            });
+
+            scene.add(colonyGroup);
+        }
+
+        // --- EXTRATERRESTRIAL MARTIAN TREES (SEPARATED DISTRIBUTED) ---
+        function initMartianTrees() {
+            const treesGroup = new THREE.Group();
+            const treePositions = [];
+            const targetTreeCount = 35;
+            const minDistance = 2.8; // Separación mínima para que no estén juntos
+
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6, metalness: 0.5 });
+            const treeColors = [0x06b6d4, 0x10b981, 0x8b5cf6, 0xf59e0b, 0xec4899];
+
+            let attempts = 0;
+            while (treePositions.length < targetTreeCount && attempts < 500) {
+                attempts++;
+                const rx = (Math.random() - 0.5) * 26;
+                const ry = (Math.random() - 0.5) * 26;
+
+                // Evitar superponerse con los marcadores clave o cúpula principal
+                if (Math.hypot(rx - 2, ry - (-3)) < 4.0) continue;
+                if (Math.hypot(rx - 3, ry - 7) < 2.5) continue;
+                if (Math.hypot(rx - 7, ry - 3) < 2.5) continue;
+
+                // Verificar distancia respecto a árboles existentes
+                let tooClose = false;
+                for (let pos of treePositions) {
+                    if (Math.hypot(rx - pos.x, ry - pos.y) < minDistance) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+
+                if (!tooClose) {
+                    treePositions.push({ x: rx, y: ry });
+                }
+            }
+
+            treePositions.forEach(pos => {
+                const tree = new THREE.Group();
+                const trunkHeight = 1.2 + Math.random() * 0.8;
+
+                // Tronco metálico/estilizado
+                const trunkGeo = new THREE.CylinderGeometry(0.1, 0.2, trunkHeight, 8);
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = trunkHeight / 2;
+                trunk.castShadow = true;
+                tree.add(trunk);
+
+                // Copa alienígena bioluminiscente (Esférica o Cónica)
+                const isSpherical = Math.random() > 0.4;
+                const leafColor = treeColors[Math.floor(Math.random() * treeColors.length)];
+                const leafMat = new THREE.MeshStandardMaterial({
+                    color: leafColor,
+                    emissive: leafColor,
+                    emissiveIntensity: 0.4,
+                    roughness: 0.2
+                });
+
+                if (isSpherical) {
+                    const foliageGeo = new THREE.SphereGeometry(0.7 + Math.random() * 0.3, 12, 12);
+                    const foliage = new THREE.Mesh(foliageGeo, leafMat);
+                    foliage.position.y = trunkHeight + 0.4;
+                    foliage.castShadow = true;
+                    tree.add(foliage);
+                } else {
+                    const foliageGeo = new THREE.ConeGeometry(0.8 + Math.random() * 0.2, 1.6, 8);
+                    const foliage = new THREE.Mesh(foliageGeo, leafMat);
+                    foliage.position.y = trunkHeight + 0.8;
+                    foliage.castShadow = true;
+                    tree.add(foliage);
+                }
+
+                placeOnTerrain(tree, pos.x, pos.y, 0);
+                treesGroup.add(tree);
+            });
+
+            scene.add(treesGroup);
+        }
+
+        function initRover() {
+            roverGroup = new THREE.Group();
+
+            const bodyGeo = new THREE.BoxGeometry(1.2, 0.5, 1.8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3, metalness: 0.8 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            roverGroup.add(body);
+
+            const topGeo = new THREE.BoxGeometry(0.8, 0.4, 0.9);
+            const topMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.5 });
+            const top = new THREE.Mesh(topGeo, topMat);
+            top.position.set(0, 0.8, -0.1);
+            top.castShadow = true;
+            roverGroup.add(top);
+
+            const mastGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.8);
+            const mastMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.9 });
+            const mast = new THREE.Mesh(mastGeo, mastMat);
+            mast.position.set(0, 1.2, -0.5);
+            roverGroup.add(mast);
+
+            const camHeadGeo = new THREE.BoxGeometry(0.25, 0.15, 0.2);
+            const camHeadMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, emissive: 0x0891b2, emissiveIntensity: 0.6 });
+            const camHead = new THREE.Mesh(camHeadGeo, camHeadMat);
+            camHead.position.set(0, 1.6, -0.5);
+            roverGroup.add(camHead);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.2, 16);
+            wheelGeo.rotateZ(Math.PI / 2);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 });
+
+            const wheelPositions = [
+                [-0.7, 0.28, 0.6], [0.7, 0.28, 0.6],
+                [-0.7, 0.28, 0.0], [0.7, 0.28, 0.0],
+                [-0.7, 0.28, -0.6], [0.7, 0.28, -0.6]
+            ];
+
+            wheels = [];
+            wheelPositions.forEach(p => {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.position.set(p[0], p[1], p[2]);
+                wheel.castShadow = true;
+                roverGroup.add(wheel);
+                wheels.push(wheel);
+            });
+
+            scene.add(roverGroup);
+            updateRoverPosition();
+        }
+
+        function initMarkersAndDome() {
+            function createBeacon(x, y, label, color) {
+                const z = terrainFunction(x, y);
+                const beaconGroup = new THREE.Group();
+                beaconGroup.position.set(x, z * 0.5, -y);
+
+                const poleGeo = new THREE.CylinderGeometry(0.05, 0.05, 4);
+                const poleMat = new THREE.MeshBasicMaterial({ color: color });
+                const pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.position.y = 2;
+                beaconGroup.add(pole);
+
+                const orbGeo = new THREE.SphereGeometry(0.4, 16, 16);
+                const orbMat = new THREE.MeshBasicMaterial({ color: color });
+                const orb = new THREE.Mesh(orbGeo, orbMat);
+                orb.position.y = 4;
+                beaconGroup.add(orb);
+
+                scene.add(beaconGroup);
+            }
+
+            createBeacon(3, 7, "P1", 0xef4444);
+            createBeacon(7, 3, "P2", 0x3b82f6);
+            createBeacon(5, 5, "P3", 0xf59e0b);
+
+            const domeCenter = { x: 2, y: -3, zBase: 4 };
+            const domeRadius = 2.5;
+
+            const domeGeo = new THREE.SphereGeometry(domeRadius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const domeMat = new THREE.MeshPhysicalMaterial({
+                color: 0x06b6d4,
+                transparent: true,
+                opacity: 0.65,
+                roughness: 0.1,
+                transmission: 0.9,
+                thickness: 1.2
+            });
+            domeStructureMesh = new THREE.Mesh(domeGeo, domeMat);
+            domeStructureMesh.position.set(domeCenter.x, domeCenter.zBase * 0.5, -domeCenter.y);
+            scene.add(domeStructureMesh);
+
+            const trajPoints = [];
+            for (let t = 0; t <= Math.PI * 2; t += 0.1) {
+                const tx = 2 + 5 * Math.cos(t);
+                const ty = -3 + 5 * Math.sin(t);
+                const tz = 4;
+                trajPoints.push(new THREE.Vector3(tx, tz * 0.5 + 0.1, -ty));
+            }
+            const trajGeo = new THREE.BufferGeometry().setFromPoints(trajPoints);
+            const trajMat = new THREE.LineDashedMaterial({ color: 0x10b981, dashSize: 0.4, gapSize: 0.2 });
+            trajectoryCurveMesh = new THREE.Line(trajGeo, trajMat);
+            trajectoryCurveMesh.computeLineDistances();
+            scene.add(trajectoryCurveMesh);
+        }
+
+        function updateRoverPosition() {
+            const mathX = roverState.x;
+            const mathY = roverState.y;
+            const mathZ = terrainFunction(mathX, mathY);
+
+            roverGroup.position.set(mathX, mathZ * 0.5, -mathY);
+            roverGroup.rotation.y = roverState.angle;
+
+            const dzdx = partialDerivativeX(mathX, mathY);
+            const dzdy = partialDerivativeY(mathX, mathY);
+
+            const slopeRad = Math.atan(Math.sqrt(dzdx * dzdx + dzdy * dzdy));
+            const slopeDeg = (slopeRad * (180 / Math.PI)).toFixed(1);
+
+            const gradMag = Math.sqrt(dzdx * dzdx + dzdy * dzdy);
+            const uX = gradMag !== 0 ? (dzdx / gradMag).toFixed(2) : "0.00";
+            const uY = gradMag !== 0 ? (dzdy / gradMag).toFixed(2) : "0.00";
+
+            document.getElementById('telemetry-pos').textContent = `x: ${mathX.toFixed(2)}, y: ${mathY.toFixed(2)}`;
+            document.getElementById('telemetry-z').textContent = `${mathZ.toFixed(2)} m`;
+            document.getElementById('telemetry-grad').textContent = `(${dzdx.toFixed(2)}, ${dzdy.toFixed(2)})`;
+            document.getElementById('telemetry-slope').textContent = `${slopeDeg}°`;
+            document.getElementById('telemetry-ascent').textContent = `u_max = (${uX}, ${uY})`;
+
+            wheels.forEach(w => w.rotation.x += roverState.speed * 2);
+        }
+
+        function updatePhysics() {
+            if (isAutopilot) {
+                const target = phaseWaypoints[activePhase];
+                const dx = target.x - roverState.x;
+                const dy = target.y - roverState.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 0.2) {
+                    const targetAngle = Math.atan2(dx, dy);
+                    let diff = targetAngle - roverState.angle;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+
+                    roverState.angle += diff * 0.08;
+                    roverState.speed = Math.min(roverState.speed + roverState.accel, roverState.maxSpeed * 0.8);
+                } else {
+                    roverState.speed *= 0.8;
+                }
+            } else {
+                let forward = 0;
+                let turn = 0;
+
+                if (keys.w || keys.ArrowUp) forward += 1;
+                if (keys.s || keys.ArrowDown) forward -= 1;
+                if (keys.a || keys.ArrowLeft) turn += 1;
+                if (keys.d || keys.ArrowRight) turn -= 1;
+
+                if (turn !== 0) roverState.angle += turn * 0.035;
+
+                if (forward !== 0) {
+                    roverState.speed += forward * roverState.accel;
+                    roverState.speed = Math.max(-roverState.maxSpeed * 0.5, Math.min(roverState.maxSpeed, roverState.speed));
+                } else {
+                    roverState.speed *= roverState.friction;
+                }
+            }
+
+            roverState.x += Math.sin(roverState.angle) * roverState.speed;
+            roverState.y += Math.cos(roverState.angle) * roverState.speed;
+
+            // Limitar al mapa
+            roverState.x = Math.max(-14, Math.min(14, roverState.x));
+            roverState.y = Math.max(-14, Math.min(14, roverState.y));
+
+            updateRoverPosition();
+        }
+
+        function selectPhase(phaseNum) {
+            activePhase = phaseNum;
+            const panel = document.getElementById('phase-panel');
+            const title = document.getElementById('phase-title');
+            const content = document.getElementById('phase-content');
+
+            panel.classList.remove('hidden');
+
+            const phaseDetails = {
+                1: {
+                    title: "FASE 1: MODELACIÓN DEL TERRENO",
+                    text: `<b>Función de Altura z = f(x,y):</b><br>
+                    <span class="math-expr">z = 20 + 8e<sup>-((x-3)<sup>2</sup>+(y-7)<sup>2</sup>)/4</sup> - 6e<sup>-((x-7)<sup>2</sup>+(y-3)<sup>2</sup>)/4</sup> + 0.5x + 0.3y</span><br><br>
+                    Modela la topografía de la región explorada. Incorpora una colina prominente cerca de (3,7), una depresión cerca de (7,3) y una inclinación general del terreno.`
+                },
+                2: {
+                    title: "FASE 2: DERIVADAS Y GRADIENTES",
+                    text: `Estudio de la tasa de cambio de elevación. El vector gradiente <b>∇f(x,y) = (∂z/∂x, ∂z/∂y)</b> apunta en la dirección de máximo ascenso.<br><br>
+                    Útil para calcular la inclinación máxima del terreno en tiempo real durante la marcha del Rover.`
+                },
+                3: {
+                    title: "FASE 3: BASE ÓPTIMA / MÁXIMO LOCAL",
+                    text: `Ubicación estratégica de la base principal en el punto crítico analizado <b>(6.73, 2.75)</b>.<br><br>
+                    Representa el punto óptimo de observación y comunicación en la zona de operaciones.`
+                },
+                4: {
+                    title: "FASE 4: RUTA 3D EN EL TERRENO",
+                    text: `Análisis de la curva paramétrica trazada por el Rover en movimiento sobre la superficie marciana, integrando el cambio de altura z en función de (x,y).`
+                },
+                5: {
+                    title: "FASE 5: INTEGRALES DOBLES Y ÁREA",
+                    text: `Cálculo de área y volumen de secciones del terreno mediante integraciones en coordenadas polares sobre regiones circulares especificadas.`
+                },
+                6: {
+                    title: "FASE 6: CÚPULA SEMIESFÉRICA",
+                    text: `Diseño estructural de la Cúpula de Protección Semiesférica centrada en (2, -3) con radio R = 2.5m, calculada mediante integrales dobles en coordenadas esféricas.`
+                }
+            };
+
+            title.textContent = phaseDetails[phaseNum].title;
+            content.innerHTML = phaseDetails[phaseNum].text;
+        }
+
+        function closePhasePanel() {
+            document.getElementById('phase-panel').classList.add('hidden');
+        }
+
+        function toggleAutopilot() {
+            isAutopilot = !isAutopilot;
+            const btn = document.getElementById('btn-autopilot');
+            const mode = document.getElementById('rover-mode');
+
+            if (isAutopilot) {
+                btn.classList.remove('from-red-600', 'to-amber-600');
+                btn.classList.add('from-emerald-600', 'to-cyan-600');
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> PILOTO AUTOMÁTICO ACTIVO`;
+                mode.textContent = "AUTOPILOTO";
+                mode.className = "text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30";
+            } else {
+                btn.classList.remove('from-emerald-600', 'to-cyan-600');
+                btn.classList.add('from-red-600', 'to-amber-600');
+                btn.innerHTML = `<i class="fa-solid fa-compass"></i> PILOTO AUTOMÁTICO A FASE ACTUAL`;
+                mode.textContent = "MANUAL";
+                mode.className = "text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full border border-red-500/30";
+            }
+        }
+
+        function toggleModal(id) {
+            const modal = document.getElementById(id);
+            modal.classList.toggle('hidden');
+        }
+
+        function initEventListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            controls.update();
+
+            // Hacer rotar lentamente la cúpula principal
+            if (domeStructureMesh) domeStructureMesh.rotation.y += 0.002;
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
